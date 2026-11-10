@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meeting-Taxameter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link id="fonts" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&family=Sora:wght@600;700&display=swap">
+<style>
+  :root{--bg:#eef0f2;--fg:#1b2129;--muted:#5d6773;--line:#d5d9de;--accent:#d98a00;color-scheme:light dark}
+  @media (prefers-color-scheme: dark){:root{--bg:#101317;--fg:#e6e9ed;--muted:#97a0ab;--line:#2b313a;--accent:#f0a020}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 "IBM Plex Sans","Segoe UI",system-ui,sans-serif}
+  main{max-width:900px;margin:0 auto;padding:28px 16px 48px;display:flex;flex-direction:column;gap:18px}
+  h1{font-family:"Sora","Segoe UI",system-ui,sans-serif;font-size:1.5rem;margin:0}
+  .sub{margin:2px 0 0;color:var(--muted)}
+  .pip-btn{font:inherit;font-weight:600;cursor:pointer;border-radius:9px;border:1px solid var(--accent);color:var(--fg);background:transparent;padding:9px 15px}
+  .pip-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .note{color:var(--muted);font-size:.9rem;margin:0}
+  .placeholder{border:1px dashed var(--line);border-radius:12px;padding:24px;text-align:center;color:var(--muted)}
+  .placeholder button{margin-top:10px}
+  /* Kompakt-Ansicht, wenn die Seite selbst als kleines Pop-up läuft (Fallback ohne Picture-in-Picture) */
+  body.compact main{padding:0;max-width:none;gap:0} body.compact header, body.compact .note{display:none}
+  body.compact meeting-taxameter{height:100vh}
+</style>
+<script src="meeting-taxameter.js" defer></script>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Meeting-Taxameter</h1>
+    <p class="sub">Teilnehmende eintragen, Start drücken. Mit dem Mini-Fenster bleibt der Zähler über Teams sichtbar.</p>
+  </header>
+
+  <meeting-taxameter id="taxameter">
+    <button slot="actions" class="pip-btn" id="pipBtn" type="button">⧉ Mini-Fenster öffnen</button>
+  </meeting-taxameter>
+  <div class="placeholder" id="placeholder" hidden>
+    Der Zähler läuft gerade im Mini-Fenster.<br>
+    <button class="pip-btn" id="backBtn" type="button">Hierher zurückholen</button>
+  </div>
+
+  <p class="note" id="pipNote">Tipp: In Teams „Teilen → Fenster“ wählen und das Mini-Fenster teilen, dann sehen alle den Betrag.</p>
+</main>
+
+<script>
+(() => {
+  const el = document.getElementById("taxameter");
+  const pipBtn = document.getElementById("pipBtn");
+  const placeholder = document.getElementById("placeholder");
+  const params = new URLSearchParams(location.search);
+  let pipWin = null;
+
+  // Fallback-Modus: Seite läuft als kleines Pop-up
+  if (params.has("compact")) {
+    document.body.classList.add("compact");
+    el.setAttribute("compact", "");
+    pipBtn.remove();
+    return;
+  }
+
+  async function openPip() {
+    if (pipWin) { pipWin.focus(); return; }
+    if (!("documentPictureInPicture" in window)) return openPopup();
+    try {
+      pipWin = await documentPictureInPicture.requestWindow({ width: 340, height: 230 });
+    } catch (e) { return openPopup(); }
+
+    // Schriften und Grundstil ins Mini-Fenster übernehmen
+    const d = pipWin.document;
+    d.head.appendChild(document.getElementById("fonts").cloneNode());
+    const st = d.createElement("style");
+    st.textContent = `html,body{margin:0;height:100%;background:#14181d;color-scheme:light dark}
+      @media (prefers-color-scheme: dark){html,body{background:#07090b}}
+      meeting-taxameter{height:100%}`;
+    d.head.appendChild(st);
+    d.title = "Meeting-Taxameter";
+
+    // Komponente ins Mini-Fenster verschieben (Zustand bleibt erhalten)
+    el.setAttribute("compact", "");
+    d.body.appendChild(el);
+    el.useTimerWindow(pipWin); // sichtbares Fenster treibt den Timer, keine Drosselung
+    placeholder.hidden = false;
+
+    pipWin.addEventListener("pagehide", restore, { once: true });
+  }
+
+  function restore() {
+    el.removeAttribute("compact");
+    placeholder.before(el);
+    el.useTimerWindow(window);
+    placeholder.hidden = true;
+    pipWin = null;
+  }
+
+  function openPopup() {
+    // Fallback: normales kleines Fenster (bleibt nicht automatisch im Vordergrund)
+    const w = window.open(location.pathname + "?compact", "taxameter", "popup,width=360,height=260");
+    if (!w) alert("Bitte Pop-ups für diese Seite erlauben oder Chrome/Edge verwenden.");
+  }
+
+  pipBtn.addEventListener("click", openPip);
+  document.getElementById("backBtn").addEventListener("click", () => pipWin && pipWin.close());
+
+  if (!("documentPictureInPicture" in window)) {
+    document.getElementById("pipNote").textContent =
+      "Dein Browser kann kein Mini-Fenster, das im Vordergrund bleibt. Mit Chrome oder Edge klappt es. Bis dahin öffnet der Knopf ein normales kleines Fenster.";
+  }
+})();
+</script>
+</body>
+</html>
